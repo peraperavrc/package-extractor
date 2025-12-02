@@ -97,6 +97,61 @@
             color: #666;
             margin-left: 10px;
         }
+        #pngGrid {
+            margin-top: 20px;
+        }
+        .png-node {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            height: 140px;
+            position: relative;
+        }
+        .png-node:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .png-node img {
+            width: 100%;
+            height: 0;
+            flex: 1 1 auto;
+            object-fit: contain;
+            background-color: #f9f9f9;
+        }
+        .png-node-label {
+            padding: 4px 6px;
+            font-size: 0.75em;
+            color: #555;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-top: 1px solid #eee;
+        }
+        .png-node-size {
+            position: absolute;
+            right: 4px;
+            bottom: 30px;
+            background-color: rgba(0, 0, 0, 0.65);
+            color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 10px;
+            font-size: 0.7em;
+            pointer-events: none;
+        }
+        .checkerboard {
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+                              linear-gradient(-45deg, #ccc 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, #ccc 75%),
+                              linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 10px 10px;
+            background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+        }
     </style>
 </head>
 <body>
@@ -128,6 +183,19 @@
         <input type="checkbox" id="showFileSize" checked>
         <label for="showFileSize" data-lang="showFileSize">Show file size</label>
     </div>
+    <div class="checkbox-container">
+        <input type="checkbox" id="checkerboardBg" checked>
+        <label for="checkerboardBg" data-lang="checkerboardBg">Checkerboard PNG background</label>
+    </div>
+    <div class="checkbox-container">
+        <input type="checkbox" id="showPngGrid">
+        <label for="showPngGrid" data-lang="showPngGrid">Show PNG grid view</label>
+    </div>
+    <div id="pngGridControls" style="display:none; margin-bottom:10px;">
+        <label for="pngGridScale" data-lang="pngGridScale">Grid scale:</label>
+        <input type="range" id="pngGridScale" min="50" max="300" step="50" value="100">
+    </div>
+    <div id="pngGrid" style="display:none;"></div>
     <div id="fileList"></div>
     <div class="download-all">
         <button id="downloadAllBtn" style="display: none;" data-lang="downloadAll">Download All as ZIP</button>
@@ -147,6 +215,9 @@
                 maintainStructure: "Maintain file structure",
                 enablePreview: "Enable texture preview",
                 showFileSize: "Show file size",
+                checkerboardBg: "Checkerboard PNG background",
+                showPngGrid: "Show PNG grid view",
+                pngGridScale: "Grid scale:",
                 downloadAll: "Download All as ZIP",
                 downloadCategory: "Download {0} as ZIP",
                 errorMessage: "An error occurred while processing the package. Please check the console for details.",
@@ -164,6 +235,9 @@
                 maintainStructure: "ファイル構造を維持する",
                 enablePreview: "テクスチャのプレビューを有効にする",
                 showFileSize: "ファイルサイズを表示する",
+                checkerboardBg: "PNGの背景をチェック柄にする",
+                showPngGrid: "PNGグリッドビューを表示",
+                pngGridScale: "グリッドのスケール:",
                 downloadAll: "すべてをZIPでダウンロード",
                 downloadCategory: "{0}をZIPでダウンロード",
                 errorMessage: "パッケージの処理中にエラーが発生しました。詳細はコンソールを確認してください。",
@@ -181,6 +255,9 @@
                 maintainStructure: "파일 구조 유지",
                 enablePreview: "텍스처 미리보기 활성화",
                 showFileSize: "파일 크기 표시",
+                checkerboardBg: "PNG 배경을 체크무늬로",
+                showPngGrid: "PNG 그리드 보기 표시",
+                pngGridScale: "그리드 크기:",
                 downloadAll: "모두 ZIP으로 다운로드",
                 downloadCategory: "{0}을(를) ZIP으로 다운로드",
                 errorMessage: "패키지 처리 중 오류가 발생했습니다. 자세한 내용은 콘솔을 확인하세요.",
@@ -269,6 +346,11 @@
         const maintainStructureCheckbox = document.getElementById('maintainStructure');
         const enablePreviewCheckbox = document.getElementById('enablePreview');
         const showFileSizeCheckbox = document.getElementById('showFileSize');
+        const checkerboardBgCheckbox = document.getElementById('checkerboardBg');
+        const showPngGridCheckbox = document.getElementById('showPngGrid');
+        const pngGrid = document.getElementById('pngGrid');
+        const pngGridControls = document.getElementById('pngGridControls');
+        const pngGridScale = document.getElementById('pngGridScale');
         const downloadAllBtn = document.getElementById('downloadAllBtn');
         const extractor = new UnityExtractClient();
         let extractedFiles = {};
@@ -327,6 +409,7 @@
 
         function displayExtractedFiles(files) {
             fileList.innerHTML = '';
+            pngGrid.innerHTML = '';
             const categorizedFiles = {};
 
             for (const [path, content] of Object.entries(files)) {
@@ -343,6 +426,10 @@
 
             if (categorizeByExtensionCheckbox.checked) {
                 for (const [extension, files] of Object.entries(categorizedFiles)) {
+                    if (extension === 'png' && showPngGridCheckbox.checked) {
+                        // NOTE: Technically you could have both a category and grid view, but it feels redundant
+                        continue;
+                    }
                     const category = document.createElement('div');
                     category.className = 'category';
                     const categoryTitle = document.createElement('h3');
@@ -367,11 +454,16 @@
                 const allFiles = Object.values(categorizedFiles).flat();
                 const ul = document.createElement('ul');
                 allFiles.forEach(file => {
+                    if (showPngGridCheckbox.checked && file.path.toLowerCase().endsWith('.png')) {
+                        return;
+                    }
                     const li = createFileListItem(file.path, file.content);
                     ul.appendChild(li);
                 });
                 fileList.appendChild(ul);
             }
+
+            updatePngGrid(categorizedFiles);
         }
 
         function createFileListItem(path, content) {
@@ -395,6 +487,11 @@
                 const preview = document.createElement('img');
                 preview.className = 'preview';
                 preview.src = url;
+
+                if (checkerboardBgCheckbox.checked && path.toLowerCase().endsWith('.png')) {
+                    preview.classList.add('checkerboard');
+                }
+
                 li.appendChild(preview);
 
                 a.addEventListener('mouseover', () => {
@@ -419,6 +516,67 @@
         function isImageFile(path) {
             const extension = path.split('.').pop().toLowerCase();
             return ['png', 'jpg', 'jpeg', 'gif', 'bmp'].includes(extension);
+        }
+
+        function updatePngGrid(categorizedFiles) {
+            const pngFiles = categorizedFiles['png'] || [];
+            if (!showPngGridCheckbox.checked || pngFiles.length === 0) {
+                pngGrid.style.display = 'none';
+                pngGridControls.style.display = 'none';
+                return;
+            }
+
+            pngGrid.innerHTML = '';
+            pngGrid.style.display = 'grid';
+            pngGridControls.style.display = 'block';
+
+            const scale = parseInt(pngGridScale.value, 10) || 100;
+            const baseSize = 100;
+            const itemSize = (baseSize * scale) / 100;
+
+            pngGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${itemSize}px, 1fr))`;
+            pngGrid.style.gap = '8px';
+
+            pngFiles.forEach(file => {
+                const blob = new Blob([file.content], { type: 'image/png' });
+                const url = URL.createObjectURL(blob);
+                const node = document.createElement('div');
+                node.className = 'png-node';
+
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = file.path.split('/').pop();
+
+                if (checkerboardBgCheckbox.checked) {
+                    img.classList.add('checkerboard');
+                }
+
+                const label = document.createElement('div');
+                label.className = 'png-node-label';
+                label.textContent = file.path.split('/').pop();
+                label.title = file.path;
+
+                if (showFileSizeCheckbox.checked) {
+                    const sizeBadge = document.createElement('div');
+                    sizeBadge.className = 'png-node-size';
+                    sizeBadge.textContent = formatFileSize(file.content.byteLength);
+                    node.appendChild(sizeBadge);
+                }
+
+                node.appendChild(img);
+                node.appendChild(label);
+
+                node.addEventListener('click', () => {
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = file.path.split('/').pop();
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
+
+                pngGrid.appendChild(node);
+            });
         }
 
         async function downloadCategory(extension, files) {
@@ -460,6 +618,25 @@
 
         maintainStructureCheckbox.addEventListener('change', () => {
             displayExtractedFiles(extractedFiles);
+        });
+
+        showPngGridCheckbox.addEventListener('change', () => {
+            displayExtractedFiles(extractedFiles);
+        });
+
+        checkerboardBgCheckbox.addEventListener('change', () => {
+            displayExtractedFiles(extractedFiles);
+        });
+
+        pngGridScale.addEventListener('input', () => {
+            const categorizedFiles = {};
+            for (const [path, content] of Object.entries(extractedFiles)) {
+                if (excludeMetaCheckbox.checked && path.endsWith('.meta')) continue;
+                const extension = path.split('.').pop().toLowerCase();
+                if (!categorizedFiles[extension]) categorizedFiles[extension] = [];
+                categorizedFiles[extension].push({ path, content });
+            }
+            updatePngGrid(categorizedFiles);
         });
 
         downloadAllBtn.addEventListener('click', downloadAll);
